@@ -2,7 +2,11 @@ FROM busybox
 
 COPY conf/cruise-config.xml /etc/go/cruise-config.xml
 COPY home/ssh /var/go/.ssh
+RUN	chmod 600 /var/go/.ssh/id_dsa
+RUN chmod 700 /var/go/.ssh
 COPY home/ssh /root/.ssh
+RUN	chmod 600 /root/.ssh/id_dsa
+RUN chmod 700 /root/go/.ssh
 COPY home/docker /root/.docker
 COPY home/tutum/tutum /root/.tutum
 COPY home/maven-settings.xml /root/.m2/
