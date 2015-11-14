@@ -15,7 +15,7 @@
       <materials>
         <git url="git@github.com:sennerholm/welcome-server.git" />
       </materials>
-      <stage name="Build">
+      <stage name="Build" cleanWorkingDir="true">
         <jobs>
           <job name="Build2DockerImage">
             <tasks>
@@ -25,15 +25,14 @@
                 <arg>-B</arg>
                 <runif status="passed" />
               </exec>
-              <exec command="mvn" workingdir="#{SOURCE_DIR}">
-                <arg>clean</arg>
-                <arg>package</arg>
-                <arg>-B</arg>
+              <exec command="bash" workingdir="#{SOURCE_DIR}">
+                <arg>-c</arg>
+                <arg>mvn clean package -Dtutumuser=`grep user ~/.tutum | awk -F ' = ' '{print $2}'` -B</arg>
                 <runif status="passed" />
               </exec>
               <exec command="/bin/bash" workingdir="#{SOURCE_DIR}">
                 <arg>-c</arg>
-                <arg>docker build --tag=welcome-api:$GO_PIPELINE_LABEL .</arg>
+                <arg>docker build --tag=welcome-api:$GO_PIPELINE_LABEL -f go/Dockerfile .</arg>
                 <runif status="passed" />
               </exec>
             </tasks>
@@ -41,6 +40,7 @@
               <artifact src="#{SOURCE_DIR}/target/classes/BuildInfo.properties" dest="downstream" />
               <artifact src="#{SOURCE_DIR}/scripts" dest="downstream" />
               <artifact src="#{SOURCE_DIR}/tests" dest="downstream" />
+              <artifact src="#{SOURCE_DIR}/go" dest="downstream" />
             </artifacts>
           </job>
         </jobs>
@@ -90,7 +90,7 @@
     </pipeline>
     <pipeline name="WelcomeApiAutoLarge" labeltemplate="${WelcomeApiBAT}-al${COUNT}" isLocked="false">
       <materials>
-        <pipeline pipelineName="WelcomeApiBAT" stageName="AutoSmallDeployAndTest" />
+        <pipeline pipelineName="WelcomeApiBAT" stageName="Done" />
       </materials>
       <stage name="AutoLargeDeployAndTest" fetchMaterials="false">
         <environmentvariables>
@@ -104,14 +104,16 @@
               <fetchartifact pipeline="WelcomeApiBAT" stage="Build" job="Build2DockerImage" srcdir="downstream">
                 <runif status="passed" />
               </fetchartifact>
-              <exec command="bash" workingdir="downstream/scripts">
-                <arg>deployandsmoke.sh</arg>
-                <arg>3</arg>
+              <exec command="bash" workingdir="downstream/">
+                <arg>/opt/pipelineinabox/scripts/deploy_tutum.sh</arg>
+                <arg>go/tutum/tutum.autolarge.yml</arg>
+                <arg>welcome-api</arg>
+                <arg>autolarge</arg>
                 <runif status="passed" />
               </exec>
               <exec command="bash" workingdir="downstream/scripts">
                 <arg>runtest.sh</arg>
-                <arg>3</arg>
+                <arg>tutum</arg>
                 <runif status="passed" />
               </exec>
             </tasks>
@@ -119,7 +121,7 @@
         </jobs>
       </stage>
     </pipeline>
-    <pipeline name="WelcomeApiMan" labeltemplate="${WelcomeApiBAT}-man${COUNT}" isLocked="false">
+    <pipeline name="WelcomeApiUAT" labeltemplate="${WelcomeApiBAT}-uat${COUNT}" isLocked="false">
       <materials>
         <pipeline pipelineName="WelcomeApiBAT" stageName="AutoSmallDeployAndTest" />
       </materials>
@@ -132,11 +134,11 @@
           </job>
         </jobs>
       </stage>
-      <stage name="ManDeploy" fetchMaterials="false">
+      <stage name="UATDeploy" fetchMaterials="false">
         <approval type="manual" />
         <environmentvariables>
           <variable name="PIPELINE_ENV">
-            <value>man</value>
+            <value>uat</value>
           </variable>
         </environmentvariables>
         <jobs>
@@ -146,12 +148,15 @@
                 <runif status="passed" />
               </fetchartifact>
               <exec command="bash" workingdir="downstream/">
-                <arg>/opt/pipelineinabox/scripts/deploy_man.sh</arg>
-                <arg>tests/man/filter/tutum.man.yml</arg>
+                <arg>/opt/pipelineinabox/scripts/deploy_tutum.sh</arg>
+                <arg>go/tutum/tutum.uat.yml</arg>
+                <arg>welcome-api</arg>
+                <arg>uat</arg>
                 <runif status="passed" />
               </exec>
-              <exec command="echo">
-                <arg>Run tests. Healtcheck?</arg>
+              <exec command="bash" workingdir="downstream/scripts">
+                <arg>runtest.sh</arg>
+                <arg>tutum</arg>
                 <runif status="passed" />
               </exec>
             </tasks>
@@ -173,7 +178,7 @@
     </pipeline>
     <pipeline name="WelcomeApiProd" labeltemplate="${WelcomeApiAutoLarge}-pr${COUNT}" isLocked="false">
       <materials>
-        <pipeline pipelineName="WelcomeApiMan" stageName="TestsOk" materialName="WelcomeApiMan" />
+        <pipeline pipelineName="WelcomeApiUAT" stageName="TestsOk" materialName="WelcomeApiUAT" />
         <pipeline pipelineName="WelcomeApiAutoLarge" stageName="AutoLargeDeployAndTest" materialName="WelcomeApiAutoLarge" />
       </materials>
       <stage name="CreateReportsForDecision">
@@ -197,12 +202,19 @@
         <jobs>
           <job name="DeployAndSmokeTests">
             <tasks>
-              <fetchartifact pipeline="WelcomeApiBAT/WelcomeApiMan" stage="Build" job="Build2DockerImage" srcdir="downstream">
+              <fetchartifact pipeline="WelcomeApiBAT/WelcomeApiUAT" stage="Build" job="Build2DockerImage" srcdir="downstream">
                 <runif status="passed" />
               </fetchartifact>
+                            <exec command="bash" workingdir="downstream/">
+                <arg>/opt/pipelineinabox/scripts/deploy_tutum.sh</arg>
+                <arg>go/tutum/tutum.prod.yml</arg>
+                <arg>welcome-api</arg>
+                <arg>prod</arg>
+                <runif status="passed" />
+              </exec>
               <exec command="bash" workingdir="downstream/scripts">
-                <arg>deployandsmoke.sh</arg>
-                <arg>5</arg>
+                <arg>runtest.sh</arg>
+                <arg>tutum</arg>
                 <runif status="passed" />
               </exec>
             </tasks>
@@ -214,4 +226,3 @@
   <agents>
   </agents>
 </cruise>
-
